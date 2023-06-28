@@ -1,8 +1,6 @@
 package io.github.hongyuncloud.arthas;
 
-import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
-import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -91,14 +89,14 @@ public final class HcArthasCore {
 
     final Map<String, String> configMap = new LinkedHashMap<>();
     final Map<String, Object> config = loadConfig();
-    for (Map.Entry<String, Object> entry: config.entrySet()) {
-      if(entry.getValue() instanceof Collection<?>){
+    for (Map.Entry<String, Object> entry : config.entrySet()) {
+      if (entry.getValue() instanceof Collection<?>) {
         final StringJoiner joiner = new StringJoiner(", ");
         for (Object element : ((Collection<?>) entry.getValue())) {
           joiner.add(element.toString());
         }
         configMap.put(entry.getKey(), joiner.toString());
-      }else{
+      } else {
         configMap.put(entry.getKey(), entry.getValue().toString());
       }
     }
@@ -107,7 +105,7 @@ public final class HcArthasCore {
   }
 
   private Map<String, Object> loadConfig() throws IOException {
-    try(final Reader reader = Files.newBufferedReader(PLUGIN_DIRECTORY.resolve(CONFIG_YML))) {
+    try (final Reader reader = Files.newBufferedReader(PLUGIN_DIRECTORY.resolve(CONFIG_YML))) {
       return new Yaml().loadAs(reader, Map.class);
     }
   }

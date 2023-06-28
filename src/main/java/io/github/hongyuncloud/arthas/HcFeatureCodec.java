@@ -11,7 +11,7 @@ import java.util.Stack;
  * 用于封装系统内部features/attribute等扩展字段的管理
  * Created by dukun on 15/3/31.
  */
-public class HcFeatureCodec {
+public final class HcFeatureCodec {
   // 对象的编码解码器
   public final static HcFeatureCodec DEFAULT_COMMANDLINE_CODEC = new HcFeatureCodec(';', '=');
   /**

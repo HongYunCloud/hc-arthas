@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "io.github.hongyuncloud"
-version = "1.0"
+version = "1.1"
 
 repositories {
     mavenCentral()
@@ -34,13 +34,14 @@ tasks.create<Download>("downloadArthas") {
 
 tasks.processResources {
     dependsOn(tasks["downloadArthas"])
+
     with(copySpec {
-        tasks["downloadArthas"]
+        from(tasks["downloadArthas"]
             .outputs
             .files
-            .flatMap(::zipTree)
-            .filter { it.name == "arthas-core.jar" || it.name == "arthas-spy.jar" }
-            .forEach(::from)
+            .map(::zipTree)
+            .map { it.filter { it.name == "arthas-core.jar" || it.name == "arthas-spy.jar" } })
+
         rename { "$it.bin" }
     })
 }

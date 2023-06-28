@@ -45,6 +45,19 @@ enhanceLoaders:
   - org.bukkit.plugin.java.PluginClassLoader
 ```
 
+## 用例
+### 不知道日志是哪个插件打印的
+```shell
+watch -x 2 org.apache.logging.log4j.core.config.LoggerConfig processLogEvent '{params[0].message.message, @java.lang.Thread@currentThread().getStackTrace()}' 'params[0].message.message.contains("日志中的一部分内容")'
+```
+
+### 不知道类是哪个插件添加的
+```shell
+sc -d com.google.gson.Gson
+```
+
+期待您提供更多用例
+
 ## License
 本插件所用所有代码均为原创,不存在借用/抄袭等行为
 

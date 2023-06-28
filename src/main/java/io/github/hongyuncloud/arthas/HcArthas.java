@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public class HcArthas {
+public final class HcArthas {
   public static final String PLUGIN_ID = "hc-arthas";
 
   private static final Logger logger = Logger.getLogger(PLUGIN_ID);

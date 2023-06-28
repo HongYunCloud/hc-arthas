@@ -2,7 +2,7 @@ package io.github.hongyuncloud.arthas;
 
 import java.lang.instrument.Instrumentation;
 
-public class HcArthasMain {
+public final class HcArthasMain {
   public static void premain(final String args, final Instrumentation instrumentation) {
     main(args, instrumentation);
   }

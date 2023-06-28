@@ -6,7 +6,7 @@ import java.net.URLClassLoader;
 /**
  * @author beiwei30 on 09/12/2016.
  */
-public class HcArthasClassloader extends URLClassLoader {
+public final class HcArthasClassloader extends URLClassLoader {
   public HcArthasClassloader(URL[] urls) {
     super(urls, ClassLoader.getSystemClassLoader().getParent());
   }
