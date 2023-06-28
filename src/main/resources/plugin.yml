@@ -1,0 +1,7 @@
+name: hc-arthas
+version: 1.1
+main: io.github.hongyuncloud.arthas.HcArthasPlugin
+load: STARTUP
+api-version: 1.13
+authors:
+  - HongYunCloud
