@@ -1,6 +1,7 @@
 package io.github.hongyuncloud.arthas;
 
 import bot.inker.acj.JvmHacker;
+import io.github.hongyuncloud.arthas.helper.LockableThreadHelper;
 
 import java.awt.*;
 import java.io.IOException;
@@ -36,80 +37,119 @@ public final class HcArthas {
         logger.log(Level.INFO, "Arthas server already stared, skip attach.");
         return;
       }
-    } catch (Throwable e) {
+    } catch (final Throwable e) {
       // ignore
     }
 
     final String arthasArgs = HcFeatureCodec.DEFAULT_COMMANDLINE_CODEC.toString(configMap);
     final ClassLoader agentLoader = loadOrDefineClassLoader(coreJarPath);
-    final Thread bindingThread = new Thread() {
-      @Override
-      public void run() {
-        try {
-          bind(
-              instrumentation == null ? JvmHacker.instrumentation() : instrumentation,
-              agentLoader,
-              arthasArgs
-          );
-        } catch (Throwable throwable) {
-          logger.log(Level.SEVERE, "Failed to bind arthas", throwable);
-        }
+    final Thread bindingThread = new Thread(() -> {
+      try {
+        final Instrumentation insn = instrumentation == null ? JvmHacker.instrumentation() : instrumentation;
+        bind(insn, agentLoader, arthasArgs);
+      } catch (final Throwable throwable) {
+        logger.log(Level.SEVERE, "Failed to bind arthas", throwable);
       }
-    };
+    });
 
     bindingThread.setName("arthas-binding-thread");
     bindingThread.start();
     try {
       bindingThread.join();
-    } catch (InterruptedException e) {
+    } catch (final InterruptedException e) {
       Thread.currentThread().interrupt();
     }
 
-    openBrowser(configMap.get("ip"), configMap.get("httpPort"));
+    final String openAddress = buildOpenAddress(configMap.get("ip"));
+    final String url = buildUrl(openAddress, configMap.get("httpPort"));
+    final String telnetCommand = buildTelnetPort(openAddress, configMap.get("httpPort"));
+    printBind(url, telnetCommand);
+    openBrowser(url);
+
+    if (Boolean.parseBoolean(configMap.get("blockBootStrap"))) {
+      logger.log(Level.INFO, "blocking bootstrap. to continue, use command 'continue bootstrap'");
+      LockableThreadHelper.entryLock("bootstrap");
+      logger.log(Level.INFO, "continue bootstrap");
+    }
   }
 
-  private static void openBrowser(final String ip, final String port) {
-    if (port == null) {
-      return;
+  private static String buildOpenAddress(final String ip) {
+    return (ip == null || ip.equals("127.0.0.1") || ip.equals("0.0.0.0")) ? "localhost" : ip;
+  }
+
+  private static String buildUrl(final String openAddress, final String port) {
+    final StringBuilder sb = new StringBuilder();
+    sb.append("http://")
+        .append(openAddress)
+        .append(":")
+        .append(port);
+    if (!"3658".equals(port)) {
+      sb.append("/?port=").append(port);
     }
-    String openAddress = ip;
-    if (openAddress == null || openAddress.equals("127.0.0.1") || openAddress.equals("0.0.0.0")) {
-      openAddress = "localhost";
-    }
-    final String url = "http://" + openAddress + ":" + port;
-    try {
-      if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-        Desktop.getDesktop().browse(URI.create(url));
-      } else {
-        throw new UnsupportedOperationException("desktop browse not support in this environment");
+    return sb.toString();
+  }
+
+  private static String buildTelnetPort(final String openAddress, final String port) {
+    return "telnet " + openAddress + ":" + port;
+  }
+
+  private static void openBrowser(final String url) {
+    if (url != null) {
+      try {
+        if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+          Desktop.getDesktop().browse(URI.create(url));
+        } else {
+          throw new UnsupportedOperationException("desktop browse not support in this environment");
+        }
+      } catch (final Throwable e) {
+        logger.log(Level.FINE, "Failed to open browser", e);
       }
-    } catch (Throwable e) {
-      logger.log(Level.FINE, "Failed to open browser", e);
     }
-    logger.log(Level.INFO, "Open \"" + url + "\" to access arthas console");
   }
 
-  private static ClassLoader loadOrDefineClassLoader(Path arthasCoreJarFile) throws IOException {
+  private static void printBind(final String url, final String telnetCommand) {
+    if (url != null) {
+      logger.log(Level.INFO, "Open \"" + url + "\" to access arthas web console");
+    }
+    if (telnetCommand != null) {
+      logger.log(Level.INFO, "run \"" + telnetCommand + "\" to open arthas console session");
+    }
+  }
+
+  private static ClassLoader loadOrDefineClassLoader(final Path... jarFiles) throws IOException {
     if (arthasClassLoader == null) {
-      arthasClassLoader = new HcArthasClassloader(new URL[]{arthasCoreJarFile.toUri().toURL()});
+      URL[] urls = new URL[jarFiles.length];
+      for (int i = 0; i < jarFiles.length; i++) {
+        urls[i] = jarFiles[i].toUri().toURL();
+      }
+      arthasClassLoader = new HcArthasClassloader(urls, HcArthas.class.getClassLoader());
+      // arthasClassLoader = new HcArthasClassloader(new URL[]{
+      //     arthasCoreJarFile.toUri().toURL()
+      // });
     }
     return arthasClassLoader;
   }
 
-  private static void bind(Instrumentation inst, ClassLoader agentLoader, String args) throws Throwable {
+  private static void bind(final Instrumentation inst, final ClassLoader agentLoader, final String args) throws Throwable {
     /**
      * <pre>
      * ArthasBootstrap bootstrap = ArthasBootstrap.getInstance(inst);
      * </pre>
      */
-    Class<?> bootstrapClass = agentLoader.loadClass(ARTHAS_BOOTSTRAP);
-    Object bootstrap = bootstrapClass.getMethod(GET_INSTANCE, Instrumentation.class, String.class).invoke(null, inst, args);
-    boolean isBind = (Boolean) bootstrapClass.getMethod(IS_BIND).invoke(bootstrap);
+    final Class<?> bootstrapClass = agentLoader.loadClass(ARTHAS_BOOTSTRAP);
+    final Object bootstrap = bootstrapClass.getMethod(GET_INSTANCE, Instrumentation.class, String.class)
+        .invoke(null, inst, args);
+    final boolean isBind = (Boolean) bootstrapClass.getMethod(IS_BIND)
+        .invoke(bootstrap);
     if (!isBind) {
-      String errorMsg = "Arthas server port binding failed! Please check $HOME/logs/arthas/arthas.log for more details.";
+      final String errorMsg = "Arthas server port binding failed! Please check ./plugins/" + HcArthas.PLUGIN_ID + "/logs/arthas.log for more details.";
       logger.log(Level.SEVERE, errorMsg);
       throw new RuntimeException(errorMsg);
     }
     logger.log(Level.INFO, "Arthas server already bind.");
+
+    Class.forName("io.github.hongyuncloud.arthas.injector.HcInjectCore", false, agentLoader)
+        .getMethod("run")
+        .invoke(null);
   }
 }

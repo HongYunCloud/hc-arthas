@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
 
-    <property name="ARTHAS_LOG_PATH" value="plugins/hc-arthas/logs" />
-    <property name="ARTHAS_LOG_FILE" value="${ARTHAS_LOG_PATH}/arthas.log" />
-    <property name="RESULT_LOG_FILE" value="${ARTHAS_LOG_PATH}/result.log" />
+    <property name="ARTHAS_LOG_PATH" value="plugins/hc-arthas/logs"/>
+    <property name="ARTHAS_LOG_FILE" value="${ARTHAS_LOG_PATH}/arthas.log"/>
+    <property name="RESULT_LOG_FILE" value="${ARTHAS_LOG_PATH}/result.log"/>
 
     <!-- arthas.log -->
     <appender name="ARTHAS" class="com.alibaba.arthas.deps.ch.qos.logback.core.rolling.RollingFileAppender">
@@ -36,11 +36,11 @@
     </appender>
 
     <logger name="result" level="INFO" additivity="false">
-        <appender-ref ref="RESULT" />
+        <appender-ref ref="RESULT"/>
     </logger>
 
     <root level="INFO">
-        <appender-ref ref="ARTHAS" />
+        <appender-ref ref="ARTHAS"/>
     </root>
 
 </configuration>

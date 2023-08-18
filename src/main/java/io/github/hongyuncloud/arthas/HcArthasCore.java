@@ -2,22 +2,22 @@ package io.github.hongyuncloud.arthas;
 
 import org.yaml.snakeyaml.Yaml;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.Reader;
-import java.io.UncheckedIOException;
+import java.io.*;
 import java.lang.instrument.Instrumentation;
-import java.nio.ByteBuffer;
-import java.nio.channels.ByteChannel;
+import java.net.ServerSocket;
+import java.net.URL;
+import java.net.URLConnection;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.*;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.StringJoiner;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.zip.CRC32;
 
 public final class HcArthasCore {
   private static final Logger logger = Logger.getLogger(HcArthas.PLUGIN_ID);
@@ -25,12 +25,6 @@ public final class HcArthasCore {
   private static final int BUFFER_SIZE = 8192;
 
   private static final String CONFIG_YML = "config.yml";
-
-  private static final String ARTHAS_CORE_JAR = "arthas-core.jar";
-  private static final String ARTHAS_CORE_JAR_SHA256 = "HaxGHzdJ4Yx0bWBEiCw2F1WCiETjaKziRFQreO8YNNM";
-
-  private static final String ARTHAS_SPY_JAR = "arthas-spy.jar";
-  private static final String ARTHAS_SPY_JAR_SHA256 = "G56KB8wn+ZzbGHkA4GMPoh/NomwUpWf/I35mVUuJCA4";
 
   private static final Path PLUGIN_DIRECTORY = Paths.get("plugins", HcArthas.PLUGIN_ID);
 
@@ -41,24 +35,40 @@ public final class HcArthasCore {
     this.instrumentation = instrumentation;
   }
 
-  private static boolean checksum(final Path file, final String algorithm, final String hash) throws IOException {
-    if (hash == null) {
-      return true;
-    }
-    final MessageDigest md;
-    try {
-      md = MessageDigest.getInstance(algorithm);
-    } catch (NoSuchAlgorithmException e) {
-      throw new IOException("Failed to checksum file", e);
-    }
-    try (final ByteChannel in = Files.newByteChannel(file)) {
-      final ByteBuffer buffer = ByteBuffer.allocateDirect(BUFFER_SIZE);
-      while (in.read(buffer) != -1) {
-        buffer.flip();
-        md.update(buffer);
-        buffer.clear();
+  private static boolean checksum(final Path file, final long hash) throws IOException {
+    final CRC32 md = new CRC32();
+    try (final InputStream in = Files.newInputStream(file)) {
+      int readSize;
+      final byte[] buffer = new byte[BUFFER_SIZE];
+      while ((readSize = in.read(buffer)) != -1) {
+        md.update(buffer, 0, readSize);
       }
-      return Arrays.equals(Base64.getDecoder().decode(hash), md.digest());
+      final long digest = md.getValue();
+      if (digest == hash) {
+        return true;
+      } else {
+        logger.log(Level.INFO, "checksum not valid for \"" + file + "\", expected \"" + hash + "\", got \"" + digest + "\"");
+        return false;
+      }
+    }
+  }
+
+  private static InputStream getResource(final String resourceUrl) {
+    if (resourceUrl.startsWith("resource:")) {
+      return HcArthas.class
+          .getClassLoader()
+          .getResourceAsStream(resourceUrl.substring("resource:".length()));
+    } else {
+      try {
+        final URL rawUrl = new URL(resourceUrl);
+        final URLConnection connection = rawUrl.openConnection();
+        connection.setRequestProperty("User-Agent", "HcArthas(hongyuncloud@proton.me)");
+        return connection.getInputStream();
+      } catch (FileNotFoundException e) {
+        return null;
+      } catch (IOException e) {
+        throw new UncheckedIOException(e);
+      }
     }
   }
 
@@ -79,15 +89,17 @@ public final class HcArthasCore {
   }
 
   private void onLoadImpl() throws IOException {
+    logger.info("Loading " + HcArthas.PLUGIN_ID);
     if (!Files.exists(PLUGIN_DIRECTORY)) {
       Files.createDirectories(PLUGIN_DIRECTORY);
     }
-    saveResource(CONFIG_YML, false);
-    saveResource("logback.xml", false);
-    ensureResource(ARTHAS_CORE_JAR, ARTHAS_CORE_JAR_SHA256);
-    ensureResource(ARTHAS_SPY_JAR, ARTHAS_SPY_JAR_SHA256);
+    saveResource(CONFIG_YML);
+    saveResource("logback.xml");
+    ensureResource(HcArthasResource.ARTHAS_CORE);
+    ensureResource(HcArthasResource.ARTHAS_SPY);
 
     final Map<String, String> configMap = new LinkedHashMap<>();
+    configMap.put("outputPath", "plugins/" + HcArthas.PLUGIN_ID + "/output");
     final Map<String, Object> config = loadConfig();
     for (Map.Entry<String, Object> entry : config.entrySet()) {
       if (entry.getValue() instanceof Collection<?>) {
@@ -100,8 +112,41 @@ public final class HcArthasCore {
         configMap.put(entry.getKey(), entry.getValue().toString());
       }
     }
-    configMap.put("outputPath", "plugins/hc-arthas/output");
+    configMap.compute("telnetPort", this::resolvePort);
+    configMap.compute("httpPort", this::resolvePort);
+
+    if (Boolean.parseBoolean(configMap.get("enableNativeSupport"))) {
+      ensureResource(HcArthasResource.ARTHAS_JNI_LINUX_AARCH64);
+      ensureResource(HcArthasResource.ARTHAS_JNI_LINUX_X64);
+      ensureResource(HcArthasResource.ARTHAS_JNI_WINDOWS_X64);
+      ensureResource(HcArthasResource.ARTHAS_JNI_MACOS_X64);
+    }
+
+    if (Boolean.parseBoolean(configMap.get("enableProfilerSupport"))) {
+      ensureResource(HcArthasResource.ASYNC_PROFILER_LINUX_ARM64);
+      ensureResource(HcArthasResource.ASYNC_PROFILER_LINUX_MUSL_ARM64);
+      ensureResource(HcArthasResource.ASYNC_PROFILER_LINUX_X64);
+      ensureResource(HcArthasResource.ASYNC_PROFILER_LINUX_MUSL_X64);
+      ensureResource(HcArthasResource.ASYNC_PROFILER_MACOS);
+    }
+
     this.configMap = configMap;
+  }
+
+  private String resolvePort(String key, String oldValue) {
+    if (oldValue != null && Integer.parseInt(oldValue) != 0) {
+      return oldValue;
+    }
+    final int availablePort;
+    try (final ServerSocket serverSocket = new ServerSocket(0)) {
+      availablePort = serverSocket.getLocalPort();
+      if (availablePort <= 0) {
+        throw new IOException("Failed to bind server socket");
+      }
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+    return Integer.toString(availablePort);
   }
 
   private Map<String, Object> loadConfig() throws IOException {
@@ -111,12 +156,16 @@ public final class HcArthasCore {
   }
 
   private void onEnableImpl() throws IOException {
-    HcArthas.run(instrumentation, PLUGIN_DIRECTORY.resolve(ARTHAS_CORE_JAR), this.configMap);
+    logger.info("Enabling " + HcArthas.PLUGIN_ID);
+    HcArthas.run(instrumentation,
+        PLUGIN_DIRECTORY.resolve(HcArthasResource.ARTHAS_CORE.saveTo()),
+        this.configMap
+    );
   }
 
-  private void saveResource(String resourceName, boolean replace) {
+  private void saveResource(String resourceName) {
     final Path resourcePath = PLUGIN_DIRECTORY.resolve(resourceName);
-    if (replace || !Files.exists(resourcePath)) {
+    if (!Files.exists(resourcePath)) {
       try {
         Files.createDirectories(resourcePath.getParent());
         try (final InputStream in = getResource(resourceName)) {
@@ -131,10 +180,13 @@ public final class HcArthasCore {
     }
   }
 
-  private void ensureResource(String resourceName, String sha256) throws IOException {
-    final Path targetFile = PLUGIN_DIRECTORY.resolve(resourceName);
+  private void ensureResource(HcArthasResource resource) throws IOException {
+    if (!resource.required()) {
+      return;
+    }
+    final Path targetFile = PLUGIN_DIRECTORY.resolve(resource.saveTo());
     if (Files.exists(targetFile)) {
-      final boolean checksumSuccess = checksum(targetFile, "SHA-256", sha256);
+      final boolean checksumSuccess = checksum(targetFile, resource.crc32());
       if (checksumSuccess) {
         return;
       } else {
@@ -142,15 +194,20 @@ public final class HcArthasCore {
       }
     }
     Files.createDirectories(targetFile.getParent());
-    try (final InputStream in = getResource(resourceName + ".bin")) {
+    final Path tempFile = PLUGIN_DIRECTORY.resolve(resource.saveTo() + ".tmp");
+    logger.info("downloading \"" + resource.saveTo() + "\" from \"" + resource.url() + "\"");
+    try (final InputStream in = getResource(resource.url())) {
       if (in == null) {
-        throw new IllegalArgumentException("The embedded resource '" + resourceName + ".bin' cannot be found in " + HcArthas.PLUGIN_ID);
+        throw new IllegalArgumentException("The resource '" + resource.url() + "' cannot be found");
       }
-      Files.copy(in, targetFile, StandardCopyOption.REPLACE_EXISTING);
+      Files.copy(in, tempFile, StandardCopyOption.REPLACE_EXISTING);
     }
-  }
-
-  private InputStream getResource(String filename) {
-    return HcArthas.class.getClassLoader().getResourceAsStream(filename);
+    final boolean checksumSuccess = checksum(tempFile, resource.crc32());
+    if (checksumSuccess) {
+      Files.move(tempFile, targetFile, StandardCopyOption.REPLACE_EXISTING);
+    } else {
+      Files.delete(tempFile);
+      throw new IOException("Failed to download file \"" + resource.saveTo() + "\": checksum failure");
+    }
   }
 }

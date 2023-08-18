@@ -6,12 +6,16 @@ plugins {
     id("com.github.johnrengelman.shadow") version "8.1.1"
 }
 
-group = "io.github.hongyuncloud"
-version = "1.1"
+allprojects {
+    apply(plugin = "java")
 
-repositories {
-    mavenCentral()
-    maven("https://hub.spigotmc.org/nexus/content/repositories/snapshots/")
+    group = "io.github.hongyuncloud"
+    version = "1.2"
+
+    repositories {
+        mavenCentral()
+        maven("https://hub.spigotmc.org/nexus/content/repositories/snapshots/")
+    }
 }
 
 java {
@@ -23,6 +27,8 @@ dependencies {
     implementation("org.yaml:snakeyaml:2.0")
     implementation("bot.inker.acj:runtime:1.5")
     compileOnly("org.bukkit:bukkit:1.12-R0.1-SNAPSHOT")
+    compileOnly("com.taobao.arthas:arthas-core:3.7.0")
+
 }
 
 tasks.create<Download>("downloadArthas") {

@@ -3,10 +3,13 @@
 
 # 监听的 IP 地址
 ip: 127.0.0.1
-# 监听的 telnet 端口
-telnetPort: 3658
-# 监听的 http 端口
-httpPort: 8563
+# 监听的 telnet 端口，为 0 则自动获取可用的端口
+telnetPort: 0
+# 监听的 http 端口，为 0 则自动获取可用的端口
+httpPort: 0
+
+# 在启动时阻塞等待
+blockBootStrap: false
 
 # 连接超时时间（单位：秒）
 sessionTimeout: 1800
@@ -27,6 +30,11 @@ disabledCommands:
   - stop
 
 #### 高级设置，不理解请勿改动 ####
+# 启用 native 支持 (启用会自动下载 native libs)
+enableNativeSupport: false
+# 启用 profiler 支持，不支持 windows (启用会自动下载 async-profiler libs)
+enableProfilerSupport: false
+# 启用增强的类加载器
 enhanceLoaders:
   - java.lang.ClassLoader
   - org.bukkit.plugin.java.PluginClassLoader

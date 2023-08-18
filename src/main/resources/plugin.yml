@@ -5,3 +5,10 @@ load: STARTUP
 api-version: 1.13
 authors:
   - HongYunCloud
+commands:
+  hc-arthas:
+    description: (控制台专用) hc arthas
+    usage:
+      hc-arthas enable-profiler
+      hc-arthas enable-native
+      hc-arthas enable-remote
